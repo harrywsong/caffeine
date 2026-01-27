@@ -1,0 +1,45 @@
+{
+  "450573989975162902": {
+    "color": {
+      "channelId": "1465463726265339946",
+      "messageId": "1465537299721879717",
+      "customEmbed": {
+        "footer": "Colour Selector",
+        "title": "Colour Roles"
+      }
+    },
+    "timezone": {
+      "channelId": "1465463726265339946",
+      "messageId": "1465537304767631477",
+      "roles": {
+        "🌊": "1415145706221469780",
+        "🏔️": "1415145846520938536",
+        "🌆": "1415145929622818816",
+        "🌸": "1465531525461446840"
+      },
+      "customEmbed": {
+        "footer": "Timezone Selector"
+      }
+    },
+    "games": {
+      "channelId": "1465463726265339946",
+      "messageId": "1465537323868622961",
+      "roles": {},
+      "customEmbed": {
+        "description": "Game-specifc roles to be added soon (tbd). \n\nIf you have something in mind, dm any of the managers or the bot.",
+        "footer": "Game Selector"
+      }
+    },
+    "activities": {
+      "channelId": "1465463726265339946",
+      "messageId": "1465537328704520284",
+      "roles": {
+        "🎰": "1465483149424332993",
+        "🎤": "1465482411839324224"
+      },
+      "customEmbed": {
+        "footer": "Activity Selector"
+      }
+    }
+  }
+}

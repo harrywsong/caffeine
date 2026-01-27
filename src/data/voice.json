@@ -1,0 +1,11 @@
+{
+  "450573989975162902": {
+    "categoryId": "1465463739821330532",
+    "nameTemplate": "┊🔊﹕{user}'s Room",
+    "triggerChannels": [
+      "1465463758934643001"
+    ],
+    "tempChannels": [],
+    "channelOwners": {}
+  }
+}

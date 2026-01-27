@@ -4,21 +4,37 @@ const path = require('path');
 require('dotenv').config();
 
 const commands = [];
-const commandsPath = path.join(__dirname, 'src', 'commands');
-const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
 
-// Load all commands
-for (const file of commandFiles) {
-    const filePath = path.join(commandsPath, file);
-    const command = require(filePath);
+// Function to load commands from a directory
+function loadCommandsFromDirectory(dirPath, relativePath = '') {
+    const items = fs.readdirSync(dirPath);
     
-    if ('data' in command && 'execute' in command) {
-        commands.push(command.data.toJSON());
-        console.log(`✅ Loaded command: ${command.data.name}`);
-    } else {
-        console.log(`⚠️ Command at ${filePath} is missing required "data" or "execute" property.`);
+    for (const item of items) {
+        const itemPath = path.join(dirPath, item);
+        const stat = fs.statSync(itemPath);
+        
+        if (stat.isDirectory()) {
+            // Recursively load commands from subdirectories
+            loadCommandsFromDirectory(itemPath, path.join(relativePath, item));
+        } else if (item.endsWith('.js')) {
+            // Load command file
+            const command = require(itemPath);
+            
+            if ('data' in command && 'execute' in command) {
+                commands.push(command.data.toJSON());
+                const displayPath = relativePath ? path.join(relativePath, item) : item;
+                console.log(`✅ Loaded command: ${command.data.name} (${displayPath})`);
+            } else {
+                const displayPath = relativePath ? path.join(relativePath, item) : item;
+                console.log(`⚠️ Command at ${displayPath} is missing required "data" or "execute" property.`);
+            }
+        }
     }
 }
+
+// Load all commands from the commands directory and subdirectories
+const commandsPath = path.join(__dirname, 'src', 'commands');
+loadCommandsFromDirectory(commandsPath);
 
 // Construct and prepare an instance of the REST module
 const rest = new REST().setToken(process.env.DISCORD_TOKEN);

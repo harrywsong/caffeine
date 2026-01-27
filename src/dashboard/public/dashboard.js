@@ -2,6 +2,7 @@ class Dashboard {
     constructor() {
         this.guildId = window.location.pathname.split('/').pop();
         this.apiBase = '/api';
+        console.log('Dashboard initialized for guild:', this.guildId);
         this.init();
     }
 
@@ -58,7 +59,9 @@ class Dashboard {
             return await response.json();
         } catch (error) {
             console.error('API call failed:', error);
-            this.showAlert('Error', 'Failed to communicate with server', 'danger');
+            console.error('Endpoint:', endpoint);
+            console.error('Options:', options);
+            this.showAlert('Error', `Failed to communicate with server: ${error.message}`, 'danger');
             throw error;
         }
     }
@@ -104,7 +107,6 @@ class Dashboard {
             this.populateChannelDropdown('logChannel', textChannels);
             this.populateChannelDropdown('announcementChannel', textChannels);
             this.populateChannelDropdown('welcomeChannel', textChannels);
-            this.populateChannelDropdown('musicChannel', textChannels);
             this.populateChannelDropdown('voiceCategory', categories);
 
             // Populate form dropdowns
@@ -198,10 +200,12 @@ class Dashboard {
                 });
                 recentActivityEl.innerHTML = html;
             } else {
-                recentActivityEl.innerHTML = '<p class="text-muted">No recent activity</p>';
+                recentActivityEl.innerHTML = '<p class="text-muted text-center">No recent activity found. Try using some bot commands first!</p>';
             }
         } catch (error) {
             console.error('Failed to load stats:', error);
+            // Show error state instead of infinite loading
+            document.getElementById('recentActivity').innerHTML = '<p class="text-danger text-center">Failed to load activity data. Please refresh the page.</p>';
         }
     }
 

@@ -3,6 +3,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const path = require('path');
 const database = require('../database/database');
+require('dotenv').config();
 
 const app = express();
 const PORT = process.env.DASHBOARD_PORT || 3000;
@@ -15,12 +16,22 @@ app.use(helmet({
             styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
             scriptSrc: ["'self'", "https://cdn.jsdelivr.net"],
             imgSrc: ["'self'", "data:", "https://cdn.discordapp.com"],
+            connectSrc: ["'self'", "https://cdn.jsdelivr.net"],
+            fontSrc: ["'self'", "https://cdn.jsdelivr.net", "https://r2cdn.perplexity.ai"],
         },
     },
 }));
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+
+// Serve static files first, before other routes
+app.use(express.static(path.join(__dirname, 'public'), {
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.js')) {
+            res.setHeader('Content-Type', 'application/javascript');
+        }
+    }
+}));
 
 // Store bot client reference
 let botClient = null;
@@ -269,6 +280,10 @@ app.get('/api/guilds/:guildId/stats', async (req, res) => {
 // Serve dashboard HTML
 app.get('/dashboard/:guildId', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+});
+
+app.get('/favicon.ico', (req, res) => {
+    res.status(204).end();
 });
 
 app.get('/', (req, res) => {

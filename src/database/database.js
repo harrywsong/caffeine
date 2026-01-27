@@ -26,7 +26,6 @@ class Database {
                     welcome_channel_id TEXT,
                     welcome_message TEXT,
                     auto_role_id TEXT,
-                    music_channel_id TEXT,
                     voice_category_id TEXT,
                     voice_trigger_channel_id TEXT,
                     voice_name_template TEXT DEFAULT '{user}''s Channel',
@@ -126,21 +125,6 @@ class Database {
                     permissions TEXT DEFAULT 'admin',
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(guild_id, user_id)
-                )
-            `);
-
-            // Music queue table
-            this.db.run(`
-                CREATE TABLE IF NOT EXISTS music_queue (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    guild_id TEXT NOT NULL,
-                    title TEXT NOT NULL,
-                    url TEXT NOT NULL,
-                    duration TEXT,
-                    thumbnail TEXT,
-                    requested_by TEXT NOT NULL,
-                    position INTEGER NOT NULL,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             `);
         });
@@ -314,6 +298,19 @@ class Database {
                 function(err) {
                     if (err) reject(err);
                     else resolve(this.changes);
+                }
+            );
+        });
+    }
+
+    async getCoinLeaderboard(guildId, limit = 10) {
+        return new Promise((resolve, reject) => {
+            this.db.all(
+                'SELECT user_id, coins, total_earned FROM user_economy WHERE guild_id = ? ORDER BY coins DESC LIMIT ?',
+                [guildId, limit],
+                (err, rows) => {
+                    if (err) reject(err);
+                    else resolve(rows || []);
                 }
             );
         });

@@ -2,7 +2,10 @@ const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const database = require('./database/database');
+const config = require('./utils/config');
 const { startDashboard, setBotClient } = require('./dashboard/server');
+const { startColorRoleCleanupTimer } = require('./utils/colorRoleCleanup');
+const { startAutoRoleCaching } = require('./utils/autoRoleCache');
 require('dotenv').config();
 
 // Create a new client instance
@@ -10,9 +13,8 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildVoiceStates,
+        GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMessageReactions
     ]
 });
@@ -21,22 +23,37 @@ const client = new Client({
 client.commands = new Collection();
 client.events = new Collection();
 
+// Function to load commands from a directory recursively
+function loadCommandsFromDirectory(dirPath, relativePath = '') {
+    const items = fs.readdirSync(dirPath);
+    
+    for (const item of items) {
+        const itemPath = path.join(dirPath, item);
+        const stat = fs.statSync(itemPath);
+        
+        if (stat.isDirectory()) {
+            // Recursively load commands from subdirectories
+            loadCommandsFromDirectory(itemPath, path.join(relativePath, item));
+        } else if (item.endsWith('.js')) {
+            // Load command file
+            const command = require(itemPath);
+            
+            if ('data' in command && 'execute' in command) {
+                client.commands.set(command.data.name, command);
+                const displayPath = relativePath ? path.join(relativePath, item) : item;
+                console.log(`✅ Loaded command: ${command.data.name} (${displayPath})`);
+            } else {
+                const displayPath = relativePath ? path.join(relativePath, item) : item;
+                console.log(`⚠️ Command at ${displayPath} is missing required "data" or "execute" property.`);
+            }
+        }
+    }
+}
+
 // Load commands
 const commandsPath = path.join(__dirname, 'commands');
 if (fs.existsSync(commandsPath)) {
-    const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
-    
-    for (const file of commandFiles) {
-        const filePath = path.join(commandsPath, file);
-        const command = require(filePath);
-        
-        if ('data' in command && 'execute' in command) {
-            client.commands.set(command.data.name, command);
-            console.log(`✅ Loaded command: ${command.data.name}`);
-        } else {
-            console.log(`⚠️ Command at ${filePath} is missing required "data" or "execute" property.`);
-        }
-    }
+    loadCommandsFromDirectory(commandsPath);
 }
 
 // Load events
@@ -76,4 +93,10 @@ client.login(process.env.DISCORD_TOKEN).then(() => {
     if (process.env.ENABLE_DASHBOARD !== 'false') {
         startDashboard();
     }
+    
+    // Start automatic color role cleanup timer
+    startColorRoleCleanupTimer(client);
+    
+    // Start auto role message caching
+    startAutoRoleCaching(client);
 });

@@ -1,10 +1,16 @@
-const { ChannelType, PermissionFlagsBits } = require('discord.js');
+const { ChannelType, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 const { loadVoiceConfig, saveVoiceConfig } = require('../commands/voice');
+const config = require('../utils/config');
+const voiceTimeTracker = require('../utils/voiceTimeTracker');
+const leaderboardUpdater = require('../utils/leaderboardUpdater');
 
 module.exports = {
     name: 'voiceStateUpdate',
     async execute(oldState, newState) {
         try {
+            // Handle voice time tracking first
+            await handleVoiceTimeTracking(oldState, newState);
+
             const voiceConfig = loadVoiceConfig();
             const guildId = newState.guild.id;
             const guildData = voiceConfig[guildId];
@@ -29,25 +35,28 @@ module.exports = {
 async function handleTriggerChannelJoin(newState, guildData, voiceConfig) {
     const member = newState.member;
     const guild = newState.guild;
-    const category = guild.channels.cache.get(guildData.categoryId);
+    
+    // Use the specific category ID provided: 1465463739821330532 (mainCafe)
+    const categoryId = '1465463739821330532';
+    const category = guild.channels.cache.get(categoryId);
 
     if (!category) {
-        console.error('Voice category not found');
+        console.error(`Voice category not found: ${categoryId}`);
         return;
     }
 
     try {
         // Create a new temporary voice channel
-        const channelName = guildData.nameTemplate.replace('{user}', member.displayName);
+        const channelName = `┊🔊﹕${member.displayName}'s Room`;
         
         const tempChannel = await guild.channels.create({
             name: channelName,
             type: ChannelType.GuildVoice,
-            parent: category.id,
+            parent: categoryId,
             permissionOverwrites: [
                 {
                     id: guild.roles.everyone.id,
-                    deny: [PermissionFlagsBits.Connect]
+                    allow: [PermissionFlagsBits.Connect, PermissionFlagsBits.Speak, PermissionFlagsBits.ViewChannel]
                 },
                 {
                     id: member.id,
@@ -63,7 +72,13 @@ async function handleTriggerChannelJoin(newState, guildData, voiceConfig) {
         });
 
         // Move the user to the new channel
-        await member.voice.setChannel(tempChannel);
+        try {
+            await member.voice.setChannel(tempChannel);
+            console.log(`✅ Moved ${member.displayName} to new channel: ${channelName}`);
+        } catch (moveError) {
+            console.error('Error moving user to new channel:', moveError);
+            // If we can't move the user, still create the channel but log the issue
+        }
 
         // Add to temporary channels list
         if (!guildData.tempChannels) {
@@ -79,7 +94,17 @@ async function handleTriggerChannelJoin(newState, guildData, voiceConfig) {
 
         saveVoiceConfig(voiceConfig);
 
-        console.log(`✅ Created temporary voice channel ${channelName} for ${member.displayName}`);
+        console.log(`✅ Created temporary voice channel ${channelName} for ${member.displayName} in category ${category.name}`);
+        
+        // Log to bot logs
+        const botLogsChannelId = config.getSettingChannelId('logChannel');
+        if (botLogsChannelId) {
+            const botLogsChannel = guild.channels.cache.get(botLogsChannelId);
+            if (botLogsChannel) {
+                const logMessage = `🔊 **${member.user.tag}** created temporary voice channel: ${channelName}`;
+                botLogsChannel.send(logMessage).catch(console.error);
+            }
+        }
     } catch (error) {
         console.error('Error creating temporary voice channel:', error);
     }
@@ -104,8 +129,80 @@ async function handleTempChannelLeave(oldState, guildData, voiceConfig) {
             // Delete the empty channel
             await channel.delete('Temporary voice channel empty');
             console.log(`🗑️ Deleted empty temporary voice channel: ${channel.name}`);
+            
+            // Log to bot logs
+            const botLogsChannelId = config.getSettingChannelId('logChannel');
+            if (botLogsChannelId) {
+                const guild = oldState.guild;
+                const botLogsChannel = guild.channels.cache.get(botLogsChannelId);
+                if (botLogsChannel) {
+                    const logMessage = `🗑️ Deleted empty temporary voice channel: ${channel.name}`;
+                    botLogsChannel.send(logMessage).catch(console.error);
+                }
+            }
         } catch (error) {
             console.error('Error deleting temporary voice channel:', error);
         }
     }
+}
+async function handleVoiceTimeTracking(oldState, newState) {
+    try {
+        // Skip if user is a bot
+        if (newState.member.user.bot) return;
+
+        const userId = newState.member.user.id;
+        const guildId = newState.guild.id;
+
+        // User joined a voice channel
+        if (!oldState.channelId && newState.channelId) {
+            voiceTimeTracker.startSession(userId, newState.channelId, guildId);
+            
+            // Log to bot logs
+            const botLogsChannelId = config.getSettingChannelId('logChannel');
+            if (botLogsChannelId) {
+                const botLogsChannel = newState.guild.channels.cache.get(botLogsChannelId);
+                if (botLogsChannel) {
+                    const logMessage = `🔊 **${newState.member.user.tag}** started voice session in <#${newState.channelId}>`;
+                    botLogsChannel.send(logMessage).catch(console.error);
+                }
+            }
+        }
+        // User left a voice channel
+        else if (oldState.channelId && !newState.channelId) {
+            const duration = voiceTimeTracker.endSession(userId, guildId);
+            
+            // Log to bot logs with duration
+            const botLogsChannelId = config.getSettingChannelId('logChannel');
+            if (botLogsChannelId) {
+                const botLogsChannel = newState.guild.channels.cache.get(botLogsChannelId);
+                if (botLogsChannel) {
+                    const formattedDuration = voiceTimeTracker.formatDuration(duration);
+                    const logMessage = `🔇 **${newState.member.user.tag}** ended voice session (${formattedDuration}) from <#${oldState.channelId}>`;
+                    botLogsChannel.send(logMessage).catch(console.error);
+                }
+            }
+        }
+        // User moved between voice channels
+        else if (oldState.channelId && newState.channelId && oldState.channelId !== newState.channelId) {
+            voiceTimeTracker.updateSession(userId, newState.channelId, guildId);
+            
+            // Log to bot logs
+            const botLogsChannelId = config.getSettingChannelId('logChannel');
+            if (botLogsChannelId) {
+                const botLogsChannel = newState.guild.channels.cache.get(botLogsChannelId);
+                if (botLogsChannel) {
+                    const logMessage = `🔄 **${newState.member.user.tag}** moved voice session from <#${oldState.channelId}> to <#${newState.channelId}>`;
+                    botLogsChannel.send(logMessage).catch(console.error);
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error handling voice time tracking:', error);
+    }
+}
+
+async function logVoiceStateChange(oldState, newState) {
+    // Voice state changes should only be logged to bot-logs, not chat history
+    // Chat history is only for message edits, deletions, and file uploads/downloads
+    return;
 }

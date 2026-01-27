@@ -26,10 +26,6 @@ module.exports = {
                                 .setDescription('Channel for welcome messages')
                                 .addChannelTypes(ChannelType.GuildText))
                         .addChannelOption(option =>
-                            option.setName('music')
-                                .setDescription('Channel for music commands')
-                                .addChannelTypes(ChannelType.GuildText))
-                        .addChannelOption(option =>
                             option.setName('roles')
                                 .setDescription('Channel for role selection')
                                 .addChannelTypes(ChannelType.GuildText)))
@@ -77,7 +73,6 @@ module.exports = {
                                 .setDescription('Command to restrict')
                                 .setRequired(true)
                                 .addChoices(
-                                    { name: 'Music Commands', value: 'music' },
                                     { name: 'Casino Commands', value: 'casino' },
                                     { name: 'Voice Commands', value: 'voice' },
                                     { name: 'All Commands', value: 'all' }
@@ -179,13 +174,11 @@ async function handleChannelSetup(interaction, guildId) {
     const logs = interaction.options.getChannel('logs');
     const announcements = interaction.options.getChannel('announcements');
     const welcome = interaction.options.getChannel('welcome');
-    const music = interaction.options.getChannel('music');
     const roles = interaction.options.getChannel('roles');
 
     if (logs) settings.log_channel_id = logs.id;
     if (announcements) settings.announcement_channel_id = announcements.id;
     if (welcome) settings.welcome_channel_id = welcome.id;
-    if (music) settings.music_channel_id = music.id;
     if (roles) settings.role_selection_channel_id = roles.id;
 
     await database.updateGuildSettings(guildId, settings);
@@ -199,7 +192,6 @@ async function handleChannelSetup(interaction, guildId) {
     if (logs) embed.addFields({ name: '📋 Logs', value: `<#${logs.id}>`, inline: true });
     if (announcements) embed.addFields({ name: '📢 Announcements', value: `<#${announcements.id}>`, inline: true });
     if (welcome) embed.addFields({ name: '👋 Welcome', value: `<#${welcome.id}>`, inline: true });
-    if (music) embed.addFields({ name: '🎵 Music', value: `<#${music.id}>`, inline: true });
     if (roles) embed.addFields({ name: '🎭 Roles', value: `<#${roles.id}>`, inline: true });
 
     await interaction.reply({ embeds: [embed] });
@@ -334,7 +326,6 @@ async function handleStatus(interaction, guildId) {
     description += settings.log_channel_id ? `• Logs: <#${settings.log_channel_id}>\n` : '• Logs: Not set\n';
     description += settings.announcement_channel_id ? `• Announcements: <#${settings.announcement_channel_id}>\n` : '• Announcements: Not set\n';
     description += settings.welcome_channel_id ? `• Welcome: <#${settings.welcome_channel_id}>\n` : '• Welcome: Not set\n';
-    description += settings.music_channel_id ? `• Music: <#${settings.music_channel_id}>\n` : '• Music: Not set\n';
     description += settings.role_selection_channel_id ? `• Roles: <#${settings.role_selection_channel_id}>\n` : '• Roles: Not set\n';
 
     description += '\n**🔊 Voice System:**\n';

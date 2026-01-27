@@ -14,7 +14,6 @@ setTimeout(() => {
     console.log('  - activity_logs');
     console.log('  - temp_voice_channels');
     console.log('  - admin_users');
-    console.log('  - music_queue');
     
     process.exit(0);
 }, 1000);

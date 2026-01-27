@@ -231,6 +231,9 @@ async function postStaffCommands(channel) {
             { name: '`/admin restrictions set`', value: 'Set command restrictions for channels\n• **Parameters:** channel, command type, allowed (true/false)', inline: false },
             { name: '`/admin restrictions list`', value: 'View all current channel restrictions', inline: false },
             { name: '`/admin casino assign-game`', value: 'Assign specific games to channels\n• **Games:** coinflip, slots, dice, blackjack, all', inline: false },
+            { name: '`/admin economy set-coins`', value: 'Set a user\'s coin balance to a specific amount\n• **Parameters:** user, amount (0+)', inline: false },
+            { name: '`/admin economy add-coins`', value: 'Add coins to a user\'s balance\n• **Parameters:** user, amount (1+)', inline: false },
+            { name: '`/admin economy remove-coins`', value: 'Remove coins from a user\'s balance\n• **Parameters:** user, amount (1+)', inline: false },
             { name: '`/admin status`', value: 'View complete server configuration status', inline: false },
             { name: '`/admin dashboard`', value: 'Get web dashboard access link', inline: false }
         );

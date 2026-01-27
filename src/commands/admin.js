@@ -109,6 +109,49 @@ module.exports = {
                                     { name: 'Blackjack', value: 'blackjack' },
                                     { name: 'All Games', value: 'all' }
                                 ))))
+        .addSubcommandGroup(group =>
+            group
+                .setName('economy')
+                .setDescription('Economy management')
+                .addSubcommand(subcommand =>
+                    subcommand
+                        .setName('set-coins')
+                        .setDescription('Set a user\'s coin balance')
+                        .addUserOption(option =>
+                            option.setName('user')
+                                .setDescription('User to modify')
+                                .setRequired(true))
+                        .addIntegerOption(option =>
+                            option.setName('amount')
+                                .setDescription('New coin amount')
+                                .setRequired(true)
+                                .setMinValue(0)))
+                .addSubcommand(subcommand =>
+                    subcommand
+                        .setName('add-coins')
+                        .setDescription('Add coins to a user\'s balance')
+                        .addUserOption(option =>
+                            option.setName('user')
+                                .setDescription('User to give coins to')
+                                .setRequired(true))
+                        .addIntegerOption(option =>
+                            option.setName('amount')
+                                .setDescription('Amount of coins to add')
+                                .setRequired(true)
+                                .setMinValue(1)))
+                .addSubcommand(subcommand =>
+                    subcommand
+                        .setName('remove-coins')
+                        .setDescription('Remove coins from a user\'s balance')
+                        .addUserOption(option =>
+                            option.setName('user')
+                                .setDescription('User to remove coins from')
+                                .setRequired(true))
+                        .addIntegerOption(option =>
+                            option.setName('amount')
+                                .setDescription('Amount of coins to remove')
+                                .setRequired(true)
+                                .setMinValue(1))))
         .addSubcommand(subcommand =>
             subcommand
                 .setName('dashboard')
@@ -142,6 +185,14 @@ module.exports = {
             } else if (group === 'casino') {
                 if (subcommand === 'assign-game') {
                     await handleAssignGame(interaction, guildId);
+                }
+            } else if (group === 'economy') {
+                if (subcommand === 'set-coins') {
+                    await handleSetCoins(interaction, guildId);
+                } else if (subcommand === 'add-coins') {
+                    await handleAddCoins(interaction, guildId);
+                } else if (subcommand === 'remove-coins') {
+                    await handleRemoveCoins(interaction, guildId);
                 }
             } else if (subcommand === 'dashboard') {
                 await handleDashboard(interaction, guildId);
@@ -340,4 +391,148 @@ async function handleStatus(interaction, guildId) {
 
     embed.setDescription(description);
     await interaction.reply({ embeds: [embed] });
+}
+
+async function handleSetCoins(interaction, guildId) {
+    const user = interaction.options.getUser('user');
+    const amount = interaction.options.getInteger('amount');
+
+    try {
+        await interaction.deferReply({ ephemeral: true });
+
+        // Get current user economy data
+        const currentData = await database.getUserEconomy(user.id, guildId);
+        
+        // Update coins
+        await database.updateUserEconomy(user.id, guildId, { 
+            coins: amount,
+            total_earned: Math.max(currentData.total_earned || 1000, amount) // Don't decrease total_earned
+        });
+
+        const embed = new EmbedBuilder()
+            .setColor(0x00FF00)
+            .setTitle('💰 Coins Updated')
+            .setDescription(`Successfully set **${user.tag}**'s balance to **${amount.toLocaleString()}** coins`)
+            .addFields(
+                { name: 'Previous Balance', value: `${(currentData.coins || 1000).toLocaleString()} coins`, inline: true },
+                { name: 'New Balance', value: `${amount.toLocaleString()} coins`, inline: true }
+            )
+            .setTimestamp();
+
+        await interaction.editReply({ embeds: [embed] });
+
+        // Log the action
+        await database.logActivity(
+            guildId,
+            interaction.user.id,
+            interaction.channel.id,
+            'admin_economy',
+            `Set ${user.tag}'s coins to ${amount}`
+        );
+
+    } catch (error) {
+        console.error('Error setting coins:', error);
+        await interaction.editReply({
+            content: '❌ Failed to update user\'s coin balance.'
+        });
+    }
+}
+
+async function handleAddCoins(interaction, guildId) {
+    const user = interaction.options.getUser('user');
+    const amount = interaction.options.getInteger('amount');
+
+    try {
+        await interaction.deferReply({ ephemeral: true });
+
+        // Get current user economy data
+        const currentData = await database.getUserEconomy(user.id, guildId);
+        const currentCoins = currentData.coins || 1000;
+        const newAmount = currentCoins + amount;
+        
+        // Update coins
+        await database.updateUserEconomy(user.id, guildId, { 
+            coins: newAmount,
+            total_earned: (currentData.total_earned || 1000) + amount
+        });
+
+        const embed = new EmbedBuilder()
+            .setColor(0x00FF00)
+            .setTitle('💰 Coins Added')
+            .setDescription(`Successfully added **${amount.toLocaleString()}** coins to **${user.tag}**'s balance`)
+            .addFields(
+                { name: 'Previous Balance', value: `${currentCoins.toLocaleString()} coins`, inline: true },
+                { name: 'Amount Added', value: `+${amount.toLocaleString()} coins`, inline: true },
+                { name: 'New Balance', value: `${newAmount.toLocaleString()} coins`, inline: true }
+            )
+            .setTimestamp();
+
+        await interaction.editReply({ embeds: [embed] });
+
+        // Log the action
+        await database.logActivity(
+            guildId,
+            interaction.user.id,
+            interaction.channel.id,
+            'admin_economy',
+            `Added ${amount} coins to ${user.tag}`
+        );
+
+    } catch (error) {
+        console.error('Error adding coins:', error);
+        await interaction.editReply({
+            content: '❌ Failed to add coins to user\'s balance.'
+        });
+    }
+}
+
+async function handleRemoveCoins(interaction, guildId) {
+    const user = interaction.options.getUser('user');
+    const amount = interaction.options.getInteger('amount');
+
+    try {
+        await interaction.deferReply({ ephemeral: true });
+
+        // Get current user economy data
+        const currentData = await database.getUserEconomy(user.id, guildId);
+        const currentCoins = currentData.coins || 1000;
+        const newAmount = Math.max(0, currentCoins - amount); // Don't go below 0
+        
+        // Update coins
+        await database.updateUserEconomy(user.id, guildId, { 
+            coins: newAmount
+        });
+
+        const embed = new EmbedBuilder()
+            .setColor(0xFF6B6B)
+            .setTitle('💸 Coins Removed')
+            .setDescription(`Successfully removed **${amount.toLocaleString()}** coins from **${user.tag}**'s balance`)
+            .addFields(
+                { name: 'Previous Balance', value: `${currentCoins.toLocaleString()} coins`, inline: true },
+                { name: 'Amount Removed', value: `-${amount.toLocaleString()} coins`, inline: true },
+                { name: 'New Balance', value: `${newAmount.toLocaleString()} coins`, inline: true }
+            )
+            .setTimestamp();
+
+        if (newAmount === 0 && currentCoins < amount) {
+            embed.setFooter({ text: 'Balance was set to 0 (cannot go negative)' });
+        }
+
+        await interaction.editReply({ embeds: [embed] });
+
+        // Log the action
+        await database.logActivity(
+            guildId,
+            interaction.user.id,
+            interaction.channel.id,
+            'admin_economy',
+            `Removed ${amount} coins from ${user.tag}`
+        );
+
+    } catch (error) {
+        console.error('Error removing coins:', error);
+        await interaction.editReply({
+            content: '❌ Failed to remove coins from user\'s balance.'
+        });
+    }
 }

@@ -1,10 +1,18 @@
 module.exports = {
   apps: [{
-    name: 'discord-bot',
+    name: 'caffeinebot',
     script: 'src/index.js',
     instances: 1,
     autorestart: true,
     watch: false,
+    ignore_watch: [
+      'node_modules',
+      'logs',
+      'data',
+      '*.db',
+      '*.db-journal',
+      '*.log'
+    ],
     max_memory_restart: '1G',
     env: {
       NODE_ENV: 'production'

@@ -12,10 +12,13 @@ module.exports = {
             // Skip if user is a bot
             if (user.bot) return;
 
+            console.log(`🔍 REACTION REMOVE: ${user.tag} removed ${reaction.emoji.name} from message ${reaction.message.id}`);
+
             // Handle partials efficiently
             if (reaction.partial) {
                 try {
                     await reaction.fetch();
+                    console.log(`📥 Fetched partial reaction`);
                 } catch (error) {
                     console.error('Error fetching partial reaction:', error);
                     return;
@@ -25,6 +28,7 @@ module.exports = {
             if (user.partial) {
                 try {
                     await user.fetch();
+                    console.log(`📥 Fetched partial user`);
                 } catch (error) {
                     console.error('Error fetching partial user:', error);
                     return;
@@ -34,6 +38,7 @@ module.exports = {
             if (reaction.message.partial) {
                 try {
                     await reaction.message.fetch();
+                    console.log(`📥 Fetched partial message`);
                 } catch (error) {
                     console.error('Error fetching partial message:', error);
                     return;
@@ -55,8 +60,11 @@ module.exports = {
 async function handleAutoRoleRemoval(reaction, user) {
     const operationKey = `${user.id}-${reaction.message.id}-${reaction.emoji.name}`;
     
+    console.log(`🔄 Processing role removal for ${user.tag}`);
+    
     // Prevent concurrent operations for the same user/message/emoji
     if (roleOperations.has(operationKey)) {
+        console.log(`⏳ Skipping concurrent operation for ${user.tag}`);
         return;
     }
 
@@ -67,43 +75,68 @@ async function handleAutoRoleRemoval(reaction, user) {
         const sections = loadAutoRoleSections();
         const guildData = sections[guildId];
 
-        if (!guildData) return;
+        console.log(`📊 Guild data exists: ${!!guildData}`);
+        if (!guildData) {
+            console.log(`❌ No guild data found for ${guildId}`);
+            return;
+        }
 
         const messageId = reaction.message.id;
         const emoji = reaction.emoji.name;
+        
+        console.log(`🔍 Looking for message ${messageId} with emoji ${emoji}`);
         
         // Fetch member once, efficiently
         let member;
         try {
             member = await reaction.message.guild.members.fetch(user.id);
+            console.log(`👤 Fetched member: ${member.user.tag}`);
         } catch (error) {
             console.error(`Error fetching member ${user.id}:`, error);
             return;
         }
 
-        if (!member) return;
+        if (!member) {
+            console.log(`❌ Member not found`);
+            return;
+        }
 
         // Find which section this message belongs to and get the role
         let roleId = null;
         let sectionType = null;
 
+        console.log(`🔍 Checking sections...`);
+        console.log(`Timezone messageId: ${guildData.timezone?.messageId}`);
+        console.log(`Activities messageId: ${guildData.activities?.messageId}`);
+        console.log(`Games messageId: ${guildData.games?.messageId}`);
+
         if (guildData.timezone?.messageId === messageId) {
             roleId = guildData.timezone.roles[emoji];
             sectionType = 'timezone';
+            console.log(`🌍 Found timezone section, roleId: ${roleId}`);
         } else if (guildData.activities?.messageId === messageId) {
             roleId = guildData.activities.roles[emoji];
             sectionType = 'activities';
+            console.log(`🎯 Found activities section, roleId: ${roleId}`);
         } else if (guildData.games?.messageId === messageId) {
             roleId = guildData.games.roles[emoji];
             sectionType = 'games';
+            console.log(`🎮 Found games section, roleId: ${roleId}`);
+        } else {
+            console.log(`❌ Message ${messageId} not found in any section`);
         }
 
         // If we found a role to remove, do it immediately
         if (roleId && sectionType) {
             const role = reaction.message.guild.roles.cache.get(roleId);
+            console.log(`🎭 Role found: ${role?.name || 'NOT FOUND'}`);
+            console.log(`🔍 User has role: ${member.roles.cache.has(roleId)}`);
+            
             if (role && member.roles.cache.has(roleId)) {
                 try {
+                    console.log(`⏳ Removing role ${role.name} from ${user.tag}`);
                     await member.roles.remove(role, `Auto role removal: ${user.tag} unreacted ${emoji}`);
+                    console.log(`✅ Successfully removed role ${role.name} from ${user.tag}`);
                     
                     // Log to bot logs (async, don't wait)
                     const botLogsChannelId = config.getSettingChannelId('logChannel');
@@ -116,9 +149,15 @@ async function handleAutoRoleRemoval(reaction, user) {
                         }
                     }
                 } catch (error) {
-                    console.error(`Error removing ${sectionType} role from ${user.tag}:`, error);
+                    console.error(`❌ Error removing ${sectionType} role from ${user.tag}:`, error);
                 }
+            } else if (!role) {
+                console.log(`❌ Role ${roleId} not found in guild`);
+            } else {
+                console.log(`⚠️ User doesn't have role ${role.name} to remove`);
             }
+        } else {
+            console.log(`❌ No role found for emoji ${emoji} in section ${sectionType}`);
         }
     } catch (error) {
         console.error('Error handling auto role removal:', error);

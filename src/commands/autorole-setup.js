@@ -937,6 +937,8 @@ async function handleRemoveRole(interaction, guildId) {
 }
 
 async function handleEditEmbed(interaction, guildId) {
+    await interaction.deferReply({ ephemeral: true });
+
     const messageId = interaction.options.getString('message-id');
     const newTitle = interaction.options.getString('title');
     const newDescription = interaction.options.getString('description');
@@ -945,9 +947,8 @@ async function handleEditEmbed(interaction, guildId) {
 
     const sections = loadAutoRoleSections();
     if (!sections[guildId]) {
-        return interaction.reply({
-            content: '❌ No auto role sections found for this server!',
-            ephemeral: true
+        return interaction.editReply({
+            content: '❌ No auto role sections found for this server!'
         });
     }
 
@@ -964,9 +965,8 @@ async function handleEditEmbed(interaction, guildId) {
     }
 
     if (!sectionData) {
-        return interaction.reply({
-            content: '❌ Message ID not found! Make sure you\'re using a valid auto role message ID.',
-            ephemeral: true
+        return interaction.editReply({
+            content: '❌ Message ID not found! Make sure you\'re using a valid auto role message ID.'
         });
     }
 
@@ -975,9 +975,8 @@ async function handleEditEmbed(interaction, guildId) {
         const message = await channel.messages.fetch(sectionData.messageId);
 
         if (!message.embeds || message.embeds.length === 0) {
-            return interaction.reply({
-                content: '❌ This message doesn\'t have an embed to edit!',
-                ephemeral: true
+            return interaction.editReply({
+                content: '❌ This message doesn\'t have an embed to edit!'
             });
         }
 
@@ -990,9 +989,8 @@ async function handleEditEmbed(interaction, guildId) {
             if (newColor.startsWith('#')) {
                 embedColor = parseInt(newColor.slice(1), 16);
             } else {
-                return interaction.reply({
-                    content: '❌ Color must be a hex code starting with # (e.g., #FF69B4)',
-                    ephemeral: true
+                return interaction.editReply({
+                    content: '❌ Color must be a hex code starting with # (e.g., #FF69B4)'
                 });
             }
         }
@@ -1028,16 +1026,14 @@ async function handleEditEmbed(interaction, guildId) {
         if (newColor) changes.push('color');
         if (newFooter) changes.push('footer');
 
-        await interaction.reply({
-            content: `✅ Updated ${changes.join(', ')} for the ${sectionType} section!`,
-            ephemeral: true
+        await interaction.editReply({
+            content: `✅ Updated ${changes.join(', ')} for the ${sectionType} section!`
         });
 
     } catch (error) {
         console.error('Error editing embed:', error);
-        await interaction.reply({
-            content: '❌ Failed to edit the embed. Please check if the message still exists.',
-            ephemeral: true
+        await interaction.editReply({
+            content: '❌ Failed to edit the embed. Please check if the message still exists.'
         });
     }
 }

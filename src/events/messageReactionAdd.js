@@ -12,10 +12,13 @@ module.exports = {
             // Skip if user is a bot
             if (user.bot) return;
 
+            console.log(`🔍 REACTION ADD: ${user.tag} added ${reaction.emoji.name} to message ${reaction.message.id}`);
+
             // Handle partial reactions
             if (reaction.partial) {
                 try {
                     await reaction.fetch();
+                    console.log(`📥 Fetched partial reaction`);
                 } catch (error) {
                     console.error('Error fetching reaction:', error);
                     return;
@@ -26,6 +29,7 @@ module.exports = {
             if (user.partial) {
                 try {
                     await user.fetch();
+                    console.log(`📥 Fetched partial user`);
                 } catch (error) {
                     console.error('Error fetching user:', error);
                     return;
@@ -47,8 +51,11 @@ module.exports = {
 async function handleAutoRoleAddition(reaction, user) {
     const operationKey = `${user.id}-${reaction.message.id}-${reaction.emoji.name}`;
     
+    console.log(`🔄 Processing role addition for ${user.tag}`);
+    
     // Prevent concurrent operations for the same user/message/emoji
     if (roleOperations.has(operationKey)) {
+        console.log(`⏳ Skipping concurrent operation for ${user.tag}`);
         return;
     }
 
@@ -59,43 +66,68 @@ async function handleAutoRoleAddition(reaction, user) {
         const sections = loadAutoRoleSections();
         const guildData = sections[guildId];
 
-        if (!guildData) return;
+        console.log(`📊 Guild data exists: ${!!guildData}`);
+        if (!guildData) {
+            console.log(`❌ No guild data found for ${guildId}`);
+            return;
+        }
 
         const messageId = reaction.message.id;
         const emoji = reaction.emoji.name;
+        
+        console.log(`🔍 Looking for message ${messageId} with emoji ${emoji}`);
         
         // Fetch member once, efficiently
         let member;
         try {
             member = await reaction.message.guild.members.fetch(user.id);
+            console.log(`👤 Fetched member: ${member.user.tag}`);
         } catch (error) {
             console.error(`Error fetching member ${user.id}:`, error);
             return;
         }
 
-        if (!member) return;
+        if (!member) {
+            console.log(`❌ Member not found`);
+            return;
+        }
 
         // Find which section this message belongs to and get the role
         let roleId = null;
         let sectionType = null;
 
+        console.log(`🔍 Checking sections...`);
+        console.log(`Timezone messageId: ${guildData.timezone?.messageId}`);
+        console.log(`Activities messageId: ${guildData.activities?.messageId}`);
+        console.log(`Games messageId: ${guildData.games?.messageId}`);
+
         if (guildData.timezone?.messageId === messageId) {
             roleId = guildData.timezone.roles[emoji];
             sectionType = 'timezone';
+            console.log(`🌍 Found timezone section, roleId: ${roleId}`);
         } else if (guildData.activities?.messageId === messageId) {
             roleId = guildData.activities.roles[emoji];
             sectionType = 'activities';
+            console.log(`🎯 Found activities section, roleId: ${roleId}`);
         } else if (guildData.games?.messageId === messageId) {
             roleId = guildData.games.roles[emoji];
             sectionType = 'games';
+            console.log(`🎮 Found games section, roleId: ${roleId}`);
+        } else {
+            console.log(`❌ Message ${messageId} not found in any section`);
         }
 
         // If we found a role to add, do it immediately
         if (roleId && sectionType) {
             const role = reaction.message.guild.roles.cache.get(roleId);
+            console.log(`🎭 Role found: ${role?.name || 'NOT FOUND'}`);
+            console.log(`🔍 User has role: ${member.roles.cache.has(roleId)}`);
+            
             if (role && !member.roles.cache.has(roleId)) {
                 try {
+                    console.log(`⏳ Adding role ${role.name} to ${user.tag}`);
                     await member.roles.add(role, `Auto role: ${user.tag} reacted ${emoji}`);
+                    console.log(`✅ Successfully added role ${role.name} to ${user.tag}`);
                     
                     // Log to bot logs (async, don't wait)
                     const botLogsChannelId = config.getSettingChannelId('logChannel');
@@ -108,9 +140,15 @@ async function handleAutoRoleAddition(reaction, user) {
                         }
                     }
                 } catch (error) {
-                    console.error(`Error adding ${sectionType} role to ${user.tag}:`, error);
+                    console.error(`❌ Error adding ${sectionType} role to ${user.tag}:`, error);
                 }
+            } else if (!role) {
+                console.log(`❌ Role ${roleId} not found in guild`);
+            } else {
+                console.log(`⚠️ User already has role ${role.name}`);
             }
+        } else {
+            console.log(`❌ No role found for emoji ${emoji} in section ${sectionType}`);
         }
     } catch (error) {
         console.error('Error handling auto role addition:', error);

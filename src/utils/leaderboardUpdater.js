@@ -82,7 +82,7 @@ class LeaderboardUpdater {
                 .setTitle('🎤 Voice Leaderboard')
                 .setDescription('Top voice chat members by total time spent')
                 .setTimestamp()
-                .setFooter({ text: 'Updates every minute • Use /voicetime for detailed stats' });
+                .setFooter({ text: 'Disconnect from VC to update DB. Displays updates every minute.' });
 
             if (leaderboard.length === 0) {
                 embed.addFields({ name: '😴 No Data Yet', value: 'Start chatting in voice channels to appear here!', inline: false });

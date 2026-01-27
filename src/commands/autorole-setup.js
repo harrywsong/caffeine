@@ -182,6 +182,10 @@ module.exports = {
                 .setDescription('Update existing color message to include the remove button'))
         .addSubcommand(subcommand =>
             subcommand
+                .setName('force-recache')
+                .setDescription('Force recache all auto role messages and reactions (fixes reaction delays)'))
+        .addSubcommand(subcommand =>
+            subcommand
                 .setName('status')
                 .setDescription('Show current auto role section status'))
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
@@ -238,6 +242,9 @@ module.exports = {
                 break;
             case 'update-color-buttons':
                 await handleUpdateColorButtons(interaction, guildId);
+                break;
+            case 'force-recache':
+                await handleForceRecache(interaction, guildId);
                 break;
             case 'status':
                 await handleStatus(interaction, guildId);
@@ -597,6 +604,7 @@ async function handleStatus(interaction, guildId) {
     description += '• `/autorole-setup edit-embed message-id:<ID> title:"New Title"`\n';
     description += '• `/autorole-setup cleanup-colors` - Remove empty color roles\n';
     description += '• `/autorole-setup recache-messages` - Fix reaction issues\n';
+    description += '• `/autorole-setup force-recache` - Fix reaction delays (aggressive)\n';
     description += '• `/autorole-setup update-color-buttons` - Add remove button to existing color message';
 
     embed.setDescription(description);
@@ -1247,6 +1255,86 @@ async function handleUpdateColorButtons(interaction, guildId) {
         console.error('Error updating color buttons:', error);
         await interaction.editReply({
             content: '❌ An error occurred while updating the color buttons. Please check the logs.'
+        });
+    }
+}
+
+async function handleForceRecache(interaction, guildId) {
+    await interaction.deferReply({ ephemeral: true });
+
+    try {
+        const sections = loadAutoRoleSections();
+        const guildData = sections[guildId];
+
+        if (!guildData) {
+            return interaction.editReply({
+                content: '❌ No auto role sections found for this server!'
+            });
+        }
+
+        let cachedCount = 0;
+        let failedCount = 0;
+        const results = [];
+
+        // Force recache each auto role message with aggressive fetching
+        for (const [sectionType, sectionData] of Object.entries(guildData)) {
+            if (!sectionData.channelId || !sectionData.messageId) continue;
+
+            try {
+                const channel = await interaction.guild.channels.fetch(sectionData.channelId);
+                if (!channel) {
+                    results.push(`⚠️ ${sectionType}: Channel not found`);
+                    failedCount++;
+                    continue;
+                }
+
+                const message = await channel.messages.fetch(sectionData.messageId, { force: true });
+                if (!message) {
+                    results.push(`⚠️ ${sectionType}: Message not found`);
+                    failedCount++;
+                    continue;
+                }
+
+                // Aggressively fetch all reactions and their users
+                let reactionCount = 0;
+                if (message.reactions.cache.size > 0) {
+                    for (const reaction of message.reactions.cache.values()) {
+                        try {
+                            // Force fetch the reaction
+                            await reaction.fetch();
+                            // Force fetch all users who reacted
+                            await reaction.users.fetch({ force: true });
+                            reactionCount++;
+                        } catch (error) {
+                            console.error(`Error force-fetching reaction ${reaction.emoji.name}:`, error.message);
+                        }
+                    }
+                }
+
+                // Also fetch all guild members to ensure member cache is fresh
+                await interaction.guild.members.fetch({ force: true });
+
+                results.push(`✅ ${sectionType}: Force cached (${reactionCount} reactions, members refreshed)`);
+                cachedCount++;
+
+            } catch (error) {
+                results.push(`❌ ${sectionType}: ${error.message}`);
+                failedCount++;
+            }
+        }
+
+        const responseMessage = `🔄 **Force Recache Results:**\n\n${results.join('\n')}\n\n📊 **Summary:** ${cachedCount} cached, ${failedCount} failed\n\n⚡ **Note:** This should fix reaction delay issues!`;
+
+        await interaction.editReply({
+            content: responseMessage
+        });
+
+        console.log(`🔄 Force recached auto role messages for guild ${interaction.guild.name}`);
+
+    } catch (error) {
+        console.error('Error during force recaching:', error);
+        await interaction.editReply({
+            content: '❌ An error occurred during force recaching. Please check the logs.'
         });
     }
 }

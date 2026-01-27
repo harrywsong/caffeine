@@ -9,12 +9,32 @@ module.exports = {
             // Skip if user is a bot
             if (user.bot) return;
 
-            // Skip if reaction is partial
+            // Handle partial reactions more aggressively
             if (reaction.partial) {
                 try {
                     await reaction.fetch();
                 } catch (error) {
-                    console.error('Error fetching reaction:', error);
+                    console.error('Error fetching partial reaction:', error);
+                    return;
+                }
+            }
+
+            // Also handle partial users
+            if (user.partial) {
+                try {
+                    await user.fetch();
+                } catch (error) {
+                    console.error('Error fetching partial user:', error);
+                    return;
+                }
+            }
+
+            // Handle partial messages
+            if (reaction.message.partial) {
+                try {
+                    await reaction.message.fetch();
+                } catch (error) {
+                    console.error('Error fetching partial message:', error);
                     return;
                 }
             }
@@ -41,7 +61,15 @@ async function handleAutoRoleRemoval(reaction, user) {
 
         const messageId = reaction.message.id;
         const emoji = reaction.emoji.name;
-        const member = reaction.message.guild.members.cache.get(user.id);
+        
+        // Fetch member more reliably
+        let member;
+        try {
+            member = await reaction.message.guild.members.fetch(user.id);
+        } catch (error) {
+            console.error(`Error fetching member ${user.id}:`, error);
+            return;
+        }
 
         if (!member) return;
 
@@ -51,19 +79,23 @@ async function handleAutoRoleRemoval(reaction, user) {
             if (roleId) {
                 const role = reaction.message.guild.roles.cache.get(roleId);
                 if (role && member.roles.cache.has(roleId)) {
-                    await member.roles.remove(role);
-                    
-                    // Log to bot logs
-                    const botLogsChannelId = config.getSettingChannelId('logChannel');
-                    if (botLogsChannelId) {
-                        const botLogsChannel = reaction.message.guild.channels.cache.get(botLogsChannelId);
-                        if (botLogsChannel) {
-                            const logMessage = `🌍 **${user.tag}** removed timezone role: ${role.name} (${emoji})`;
-                            botLogsChannel.send(logMessage).catch(console.error);
+                    try {
+                        await member.roles.remove(role, `Auto role removal: ${user.tag} unreacted ${emoji}`);
+                        
+                        // Log to bot logs
+                        const botLogsChannelId = config.getSettingChannelId('logChannel');
+                        if (botLogsChannelId) {
+                            const botLogsChannel = reaction.message.guild.channels.cache.get(botLogsChannelId);
+                            if (botLogsChannel) {
+                                const logMessage = `🌍 **${user.tag}** removed timezone role: ${role.name} (${emoji})`;
+                                botLogsChannel.send(logMessage).catch(console.error);
+                            }
                         }
-                    }
 
-                    console.log(`🌍 ${user.tag} removed timezone role: ${role.name}`);
+                        console.log(`🌍 ${user.tag} removed timezone role: ${role.name}`);
+                    } catch (error) {
+                        console.error(`Error removing timezone role from ${user.tag}:`, error);
+                    }
                 }
             }
         }
@@ -74,19 +106,23 @@ async function handleAutoRoleRemoval(reaction, user) {
             if (roleId) {
                 const role = reaction.message.guild.roles.cache.get(roleId);
                 if (role && member.roles.cache.has(roleId)) {
-                    await member.roles.remove(role);
-                    
-                    // Log to bot logs
-                    const botLogsChannelId = config.getSettingChannelId('logChannel');
-                    if (botLogsChannelId) {
-                        const botLogsChannel = reaction.message.guild.channels.cache.get(botLogsChannelId);
-                        if (botLogsChannel) {
-                            const logMessage = `🎯 **${user.tag}** removed activity role: ${role.name} (${emoji})`;
-                            botLogsChannel.send(logMessage).catch(console.error);
+                    try {
+                        await member.roles.remove(role, `Auto role removal: ${user.tag} unreacted ${emoji}`);
+                        
+                        // Log to bot logs
+                        const botLogsChannelId = config.getSettingChannelId('logChannel');
+                        if (botLogsChannelId) {
+                            const botLogsChannel = reaction.message.guild.channels.cache.get(botLogsChannelId);
+                            if (botLogsChannel) {
+                                const logMessage = `🎯 **${user.tag}** removed activity role: ${role.name} (${emoji})`;
+                                botLogsChannel.send(logMessage).catch(console.error);
+                            }
                         }
-                    }
 
-                    console.log(`🎯 ${user.tag} removed activity role: ${role.name}`);
+                        console.log(`🎯 ${user.tag} removed activity role: ${role.name}`);
+                    } catch (error) {
+                        console.error(`Error removing activity role from ${user.tag}:`, error);
+                    }
                 }
             }
         }
@@ -97,19 +133,23 @@ async function handleAutoRoleRemoval(reaction, user) {
             if (roleId) {
                 const role = reaction.message.guild.roles.cache.get(roleId);
                 if (role && member.roles.cache.has(roleId)) {
-                    await member.roles.remove(role);
-                    
-                    // Log to bot logs
-                    const botLogsChannelId = config.getSettingChannelId('logChannel');
-                    if (botLogsChannelId) {
-                        const botLogsChannel = reaction.message.guild.channels.cache.get(botLogsChannelId);
-                        if (botLogsChannel) {
-                            const logMessage = `🎮 **${user.tag}** removed game role: ${role.name} (${emoji})`;
-                            botLogsChannel.send(logMessage).catch(console.error);
+                    try {
+                        await member.roles.remove(role, `Auto role removal: ${user.tag} unreacted ${emoji}`);
+                        
+                        // Log to bot logs
+                        const botLogsChannelId = config.getSettingChannelId('logChannel');
+                        if (botLogsChannelId) {
+                            const botLogsChannel = reaction.message.guild.channels.cache.get(botLogsChannelId);
+                            if (botLogsChannel) {
+                                const logMessage = `🎮 **${user.tag}** removed game role: ${role.name} (${emoji})`;
+                                botLogsChannel.send(logMessage).catch(console.error);
+                            }
                         }
-                    }
 
-                    console.log(`🎮 ${user.tag} removed game role: ${role.name}`);
+                        console.log(`🎮 ${user.tag} removed game role: ${role.name}`);
+                    } catch (error) {
+                        console.error(`Error removing game role from ${user.tag}:`, error);
+                    }
                 }
             }
         }

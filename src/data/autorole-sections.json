@@ -5,7 +5,8 @@
       "messageId": "1465537299721879717",
       "customEmbed": {
         "footer": "Colour Selector",
-        "title": "Colour Roles"
+        "title": "Colour Roles",
+        "description": "Click the button below to request a custom color role! \n\nYou can have one color role at a time \nProvide a hex code (e.g., #FF69B4) \nChange your color anytime \nEmpty color roles are automatically deleted"
       }
     },
     "timezone": {
@@ -18,7 +19,8 @@
         "🌸": "1465531525461446840"
       },
       "customEmbed": {
-        "footer": "Timezone Selector"
+        "footer": "Timezone Selector",
+        "description": "🌊 Pacific - West Coast \n🏔️ Central - Central \n🌆 Eastern - East Coast \n🌸 KST - Korean Standard Time"
       }
     },
     "games": {
@@ -38,7 +40,7 @@
         "🎤": "1465482411839324224"
       },
       "customEmbed": {
-        "description": "React to show your favorite server activities!\n🎰 Casino\n🎤 Voice",        
+        "description": "React to show your favorite server activities!  \n\n🎰 Casino\n🎤 Voice",
         "footer": "Activity Selector"
       }
     }

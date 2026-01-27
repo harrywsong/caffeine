@@ -2,6 +2,9 @@ const { EmbedBuilder } = require('discord.js');
 const config = require('../utils/config');
 const { loadAutoRoleSections } = require('../commands/autorole-setup');
 
+// Track ongoing role operations to prevent race conditions
+const roleOperations = new Map();
+
 module.exports = {
     name: 'messageReactionAdd',
     async execute(reaction, user) {
@@ -9,12 +12,22 @@ module.exports = {
             // Skip if user is a bot
             if (user.bot) return;
 
-            // Skip if reaction is partial
+            // Handle partial reactions
             if (reaction.partial) {
                 try {
                     await reaction.fetch();
                 } catch (error) {
                     console.error('Error fetching reaction:', error);
+                    return;
+                }
+            }
+
+            // Handle partial users
+            if (user.partial) {
+                try {
+                    await user.fetch();
+                } catch (error) {
+                    console.error('Error fetching user:', error);
                     return;
                 }
             }
@@ -32,6 +45,16 @@ module.exports = {
 };
 
 async function handleAutoRoleAddition(reaction, user) {
+    const operationKey = `${user.id}-${reaction.message.id}-${reaction.emoji.name}`;
+    
+    // Prevent concurrent operations for the same user/message/emoji
+    if (roleOperations.has(operationKey)) {
+        console.log(`⏳ Skipping concurrent role add operation for ${user.tag}`);
+        return;
+    }
+
+    roleOperations.set(operationKey, 'adding');
+
     try {
         const guildId = reaction.message.guild.id;
         const sections = loadAutoRoleSections();
@@ -41,7 +64,15 @@ async function handleAutoRoleAddition(reaction, user) {
 
         const messageId = reaction.message.id;
         const emoji = reaction.emoji.name;
-        const member = reaction.message.guild.members.cache.get(user.id);
+        
+        // Fetch member reliably
+        let member;
+        try {
+            member = await reaction.message.guild.members.fetch(user.id);
+        } catch (error) {
+            console.error(`Error fetching member ${user.id}:`, error);
+            return;
+        }
 
         if (!member) return;
 
@@ -50,21 +81,24 @@ async function handleAutoRoleAddition(reaction, user) {
             const roleId = guildData.timezone.roles[emoji];
             if (roleId) {
                 const role = reaction.message.guild.roles.cache.get(roleId);
-                if (role) {
-                    // Simply add the timezone role (allow multiple)
-                    await member.roles.add(role);
-                    
-                    // Log to bot logs
-                    const botLogsChannelId = config.getSettingChannelId('logChannel');
-                    if (botLogsChannelId) {
-                        const botLogsChannel = reaction.message.guild.channels.cache.get(botLogsChannelId);
-                        if (botLogsChannel) {
-                            const logMessage = `🌍 **${user.tag}** added timezone role: ${role.name} (${emoji})`;
-                            botLogsChannel.send(logMessage).catch(console.error);
+                if (role && !member.roles.cache.has(roleId)) {
+                    try {
+                        await member.roles.add(role, `Auto role: ${user.tag} reacted ${emoji}`);
+                        
+                        // Log to bot logs
+                        const botLogsChannelId = config.getSettingChannelId('logChannel');
+                        if (botLogsChannelId) {
+                            const botLogsChannel = reaction.message.guild.channels.cache.get(botLogsChannelId);
+                            if (botLogsChannel) {
+                                const logMessage = `🌍 **${user.tag}** added timezone role: ${role.name} (${emoji})`;
+                                botLogsChannel.send(logMessage).catch(console.error);
+                            }
                         }
-                    }
 
-                    console.log(`🌍 ${user.tag} added timezone role: ${role.name}`);
+                        console.log(`🌍 ${user.tag} added timezone role: ${role.name}`);
+                    } catch (error) {
+                        console.error(`Error adding timezone role to ${user.tag}:`, error);
+                    }
                 }
             }
         }
@@ -74,20 +108,24 @@ async function handleAutoRoleAddition(reaction, user) {
             const roleId = guildData.activities.roles[emoji];
             if (roleId) {
                 const role = reaction.message.guild.roles.cache.get(roleId);
-                if (role) {
-                    await member.roles.add(role);
-                    
-                    // Log to bot logs
-                    const botLogsChannelId = config.getSettingChannelId('logChannel');
-                    if (botLogsChannelId) {
-                        const botLogsChannel = reaction.message.guild.channels.cache.get(botLogsChannelId);
-                        if (botLogsChannel) {
-                            const logMessage = `🎯 **${user.tag}** added activity role: ${role.name} (${emoji})`;
-                            botLogsChannel.send(logMessage).catch(console.error);
+                if (role && !member.roles.cache.has(roleId)) {
+                    try {
+                        await member.roles.add(role, `Auto role: ${user.tag} reacted ${emoji}`);
+                        
+                        // Log to bot logs
+                        const botLogsChannelId = config.getSettingChannelId('logChannel');
+                        if (botLogsChannelId) {
+                            const botLogsChannel = reaction.message.guild.channels.cache.get(botLogsChannelId);
+                            if (botLogsChannel) {
+                                const logMessage = `🎯 **${user.tag}** added activity role: ${role.name} (${emoji})`;
+                                botLogsChannel.send(logMessage).catch(console.error);
+                            }
                         }
-                    }
 
-                    console.log(`🎯 ${user.tag} added activity role: ${role.name}`);
+                        console.log(`🎯 ${user.tag} added activity role: ${role.name}`);
+                    } catch (error) {
+                        console.error(`Error adding activity role to ${user.tag}:`, error);
+                    }
                 }
             }
         }
@@ -97,25 +135,34 @@ async function handleAutoRoleAddition(reaction, user) {
             const roleId = guildData.games.roles[emoji];
             if (roleId) {
                 const role = reaction.message.guild.roles.cache.get(roleId);
-                if (role) {
-                    await member.roles.add(role);
-                    
-                    // Log to bot logs
-                    const botLogsChannelId = config.getSettingChannelId('logChannel');
-                    if (botLogsChannelId) {
-                        const botLogsChannel = reaction.message.guild.channels.cache.get(botLogsChannelId);
-                        if (botLogsChannel) {
-                            const logMessage = `🎮 **${user.tag}** added game role: ${role.name} (${emoji})`;
-                            botLogsChannel.send(logMessage).catch(console.error);
+                if (role && !member.roles.cache.has(roleId)) {
+                    try {
+                        await member.roles.add(role, `Auto role: ${user.tag} reacted ${emoji}`);
+                        
+                        // Log to bot logs
+                        const botLogsChannelId = config.getSettingChannelId('logChannel');
+                        if (botLogsChannelId) {
+                            const botLogsChannel = reaction.message.guild.channels.cache.get(botLogsChannelId);
+                            if (botLogsChannel) {
+                                const logMessage = `🎮 **${user.tag}** added game role: ${role.name} (${emoji})`;
+                                botLogsChannel.send(logMessage).catch(console.error);
+                            }
                         }
-                    }
 
-                    console.log(`🎮 ${user.tag} added game role: ${role.name}`);
+                        console.log(`🎮 ${user.tag} added game role: ${role.name}`);
+                    } catch (error) {
+                        console.error(`Error adding game role to ${user.tag}:`, error);
+                    }
                 }
             }
         }
     } catch (error) {
         console.error('Error handling auto role addition:', error);
+    } finally {
+        // Clean up operation tracking after a short delay
+        setTimeout(() => {
+            roleOperations.delete(operationKey);
+        }, 1000);
     }
 }
 

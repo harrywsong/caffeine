@@ -2,6 +2,9 @@ const { EmbedBuilder } = require('discord.js');
 const config = require('../utils/config');
 const { loadAutoRoleSections } = require('../commands/autorole-setup');
 
+// Track ongoing role operations to prevent race conditions (shared with messageReactionAdd)
+const roleOperations = new Map();
+
 module.exports = {
     name: 'messageReactionRemove',
     async execute(reaction, user) {
@@ -52,6 +55,16 @@ module.exports = {
 };
 
 async function handleAutoRoleRemoval(reaction, user) {
+    const operationKey = `${user.id}-${reaction.message.id}-${reaction.emoji.name}`;
+    
+    // Prevent concurrent operations for the same user/message/emoji
+    if (roleOperations.has(operationKey)) {
+        console.log(`⏳ Skipping concurrent role remove operation for ${user.tag}`);
+        return;
+    }
+
+    roleOperations.set(operationKey, 'removing');
+
     try {
         const guildId = reaction.message.guild.id;
         const sections = loadAutoRoleSections();
@@ -155,6 +168,11 @@ async function handleAutoRoleRemoval(reaction, user) {
         }
     } catch (error) {
         console.error('Error handling auto role removal:', error);
+    } finally {
+        // Clean up operation tracking after a short delay
+        setTimeout(() => {
+            roleOperations.delete(operationKey);
+        }, 1000);
     }
 }
 

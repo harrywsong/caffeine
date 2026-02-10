@@ -32,8 +32,7 @@ module.exports = {
                 .addStringOption(option =>
                     option.setName('model')
                         .setDescription('Model name (e.g., llama3.2:3b)')
-                        .setRequired(true))
-                .setDefaultMemberPermissions(PermissionFlagsBits.Administrator))
+                        .setRequired(true)))
         .addSubcommand(subcommand =>
             subcommand
                 .setName('search')
@@ -45,6 +44,16 @@ module.exports = {
 
     async execute(interaction) {
         const subcommand = interaction.options.getSubcommand();
+
+        // Check admin permission for set-model command
+        if (subcommand === 'set-model') {
+            if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+                return interaction.reply({
+                    content: '❌ This command requires Administrator permissions.',
+                    ephemeral: true
+                });
+            }
+        }
 
         try {
             if (subcommand === 'ask') {

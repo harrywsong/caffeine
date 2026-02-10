@@ -59,6 +59,10 @@ module.exports = {
                 if (results.length > 0) {
                     searchResults = webSearch.formatResults(results);
                     console.log(`✅ Found ${results.length} search results`);
+                } else {
+                    console.log(`⚠️  No search results found, AI will respond without web data`);
+                    // Add a note that search didn't return results
+                    searchResults = 'Note: Web search was attempted but no results were found. Providing answer based on general knowledge.';
                 }
             }
 

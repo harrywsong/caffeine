@@ -25,7 +25,39 @@ class WebSearch {
 
             console.log(`🔍 Searching web for: ${query}`);
 
-            // Use DuckDuckGo Instant Answer API
+            // Try HTML search first (more reliable)
+            let results = await this.searchHTML(query, maxResults);
+
+            // If HTML search fails, try API
+            if (results.length === 0) {
+                results = await this.searchAPI(query, maxResults);
+            }
+
+            // Cache results
+            if (results.length > 0) {
+                this.searchCache.set(cacheKey, {
+                    results,
+                    timestamp: Date.now()
+                });
+            }
+
+            // Clean old cache entries
+            this.cleanCache();
+
+            console.log(`✅ Found ${results.length} search results`);
+            return results;
+
+        } catch (error) {
+            console.error('Error performing web search:', error.message);
+            return [];
+        }
+    }
+
+    /**
+     * Search using DuckDuckGo API
+     */
+    async searchAPI(query, maxResults = 5) {
+        try {
             const response = await axios.get('https://api.duckduckgo.com/', {
                 params: {
                     q: query,
@@ -62,39 +94,24 @@ class WebSearch {
                 }
             }
 
-            // If no results from DuckDuckGo API, try alternative method
-            if (results.length === 0) {
-                const htmlResults = await this.searchHTML(query, maxResults);
-                results.push(...htmlResults);
-            }
-
-            // Cache results
-            this.searchCache.set(cacheKey, {
-                results,
-                timestamp: Date.now()
-            });
-
-            // Clean old cache entries
-            this.cleanCache();
-
-            console.log(`✅ Found ${results.length} search results`);
             return results;
 
         } catch (error) {
-            console.error('Error performing web search:', error.message);
+            console.error('Error in API search:', error.message);
             return [];
         }
     }
 
     /**
-     * Alternative HTML-based search (fallback)
+     * Alternative HTML-based search (more reliable)
      */
     async searchHTML(query, maxResults = 5) {
         try {
-            const response = await axios.get('https://html.duckduckgo.com/html/', {
+            // Use DuckDuckGo Lite (simpler HTML, easier to parse)
+            const response = await axios.get('https://lite.duckduckgo.com/lite/', {
                 params: { q: query },
                 headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                 },
                 timeout: 10000
             });
@@ -102,25 +119,108 @@ class WebSearch {
             const results = [];
             const html = response.data;
 
-            // Simple regex parsing (not ideal but works for basic results)
-            const resultRegex = /<a class="result__a" href="([^"]+)">([^<]+)<\/a>[\s\S]*?<a class="result__snippet"[^>]*>([^<]+)<\/a>/g;
-            let match;
-            let count = 0;
-
-            while ((match = resultRegex.exec(html)) !== null && count < maxResults) {
-                results.push({
-                    title: this.decodeHTML(match[2]),
-                    snippet: this.decodeHTML(match[3]),
-                    url: this.decodeHTML(match[1]),
-                    source: 'DuckDuckGo'
+            // Parse DuckDuckGo Lite results
+            // Format: <a rel="nofollow" href="URL">TITLE</a>
+            // Followed by: <td class="result-snippet">SNIPPET</td>
+            
+            const linkRegex = /<a rel="nofollow" href="([^"]+)">([^<]+)<\/a>/g;
+            const snippetRegex = /<td class="result-snippet">([^<]+)<\/td>/g;
+            
+            const links = [];
+            const snippets = [];
+            
+            let linkMatch;
+            while ((linkMatch = linkRegex.exec(html)) !== null) {
+                links.push({
+                    url: this.decodeHTML(linkMatch[1]),
+                    title: this.decodeHTML(linkMatch[2])
                 });
-                count++;
+            }
+            
+            let snippetMatch;
+            while ((snippetMatch = snippetRegex.exec(html)) !== null) {
+                snippets.push(this.decodeHTML(snippetMatch[1]));
+            }
+
+            // Combine links and snippets
+            for (let i = 0; i < Math.min(links.length, snippets.length, maxResults); i++) {
+                if (links[i] && snippets[i]) {
+                    results.push({
+                        title: links[i].title,
+                        snippet: snippets[i],
+                        url: links[i].url,
+                        source: 'DuckDuckGo'
+                    });
+                }
+            }
+
+            // If still no results, try a simpler approach
+            if (results.length === 0) {
+                console.log('⚠️  HTML parsing failed, trying fallback method...');
+                return await this.searchFallback(query, maxResults);
             }
 
             return results;
 
         } catch (error) {
             console.error('Error in HTML search:', error.message);
+            return [];
+        }
+    }
+
+    /**
+     * Fallback search method using a different approach
+     */
+    async searchFallback(query, maxResults = 5) {
+        try {
+            // Use DuckDuckGo's JSON endpoint with different parameters
+            const response = await axios.get('https://api.duckduckgo.com/', {
+                params: {
+                    q: query,
+                    format: 'json',
+                    pretty: 1,
+                    no_redirect: 1,
+                    no_html: 1,
+                    skip_disambig: 1,
+                    t: 'discord-bot'
+                },
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (compatible; DiscordBot/1.0)'
+                },
+                timeout: 10000
+            });
+
+            const results = [];
+            const data = response.data;
+
+            // Try to get any available information
+            if (data.Abstract) {
+                results.push({
+                    title: data.Heading || 'Information',
+                    snippet: data.Abstract,
+                    url: data.AbstractURL || '',
+                    source: data.AbstractSource || 'DuckDuckGo'
+                });
+            }
+
+            // Check Results array
+            if (data.Results && data.Results.length > 0) {
+                for (const result of data.Results.slice(0, maxResults - results.length)) {
+                    if (result.Text && result.FirstURL) {
+                        results.push({
+                            title: result.Text.split(' - ')[0] || 'Result',
+                            snippet: result.Text,
+                            url: result.FirstURL,
+                            source: 'DuckDuckGo'
+                        });
+                    }
+                }
+            }
+
+            return results;
+
+        } catch (error) {
+            console.error('Error in fallback search:', error.message);
             return [];
         }
     }

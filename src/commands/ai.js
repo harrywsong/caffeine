@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const axios = require('axios');
+const webSearch = require('../utils/webSearch');
 
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3.2:3b';
@@ -32,7 +33,15 @@ module.exports = {
                     option.setName('model')
                         .setDescription('Model name (e.g., llama3.2:3b)')
                         .setRequired(true))
-                .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)),
+                .setDefaultMemberPermissions(PermissionFlagsBits.Administrator))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('search')
+                .setDescription('Search the web and get AI analysis')
+                .addStringOption(option =>
+                    option.setName('query')
+                        .setDescription('What to search for')
+                        .setRequired(true))),
 
     async execute(interaction) {
         const subcommand = interaction.options.getSubcommand();
@@ -46,6 +55,8 @@ module.exports = {
                 await handleModels(interaction);
             } else if (subcommand === 'set-model') {
                 await handleSetModel(interaction);
+            } else if (subcommand === 'search') {
+                await handleSearch(interaction);
             }
         } catch (error) {
             console.error('Error in AI command:', error);
@@ -219,5 +230,78 @@ async function handleSetModel(interaction) {
         await interaction.editReply({
             content: '❌ Failed to change model. AI service may be offline.'
         });
+    }
+}
+
+
+async function handleSearch(interaction) {
+    const query = interaction.options.getString('query');
+    
+    await interaction.deferReply();
+
+    try {
+        // Perform web search
+        const results = await webSearch.search(query, 5);
+        
+        if (results.length === 0) {
+            return interaction.editReply('❌ No search results found for that query.');
+        }
+
+        // Format search results
+        const searchContext = webSearch.formatResults(results);
+
+        // Get AI analysis of search results
+        const response = await axios.post(
+            `${OLLAMA_URL}/api/generate`,
+            {
+                model: OLLAMA_MODEL,
+                prompt: `Based on these web search results, provide a concise summary and answer:\n\n${searchContext}\n\nUser's question: ${query}`,
+                stream: false,
+                system: `You are a helpful AI assistant. Analyze the provided web search results and give a clear, accurate answer to the user's question. Always cite your sources from the search results. Keep your response concise and informative.`
+            },
+            { timeout: 60000 }
+        );
+
+        if (response.data && response.data.response) {
+            const aiResponse = response.data.response.trim();
+            
+            // Create embed with search results
+            const embed = new EmbedBuilder()
+                .setColor(0x0099FF)
+                .setTitle(`🔍 Search: ${query}`)
+                .setDescription(aiResponse.substring(0, 4096)) // Discord embed limit
+                .setTimestamp();
+
+            // Add top 3 sources
+            if (results.length > 0) {
+                let sources = '';
+                results.slice(0, 3).forEach((result, index) => {
+                    sources += `${index + 1}. [${result.title}](${result.url})\n`;
+                });
+                embed.addFields({ name: '📚 Sources', value: sources, inline: false });
+            }
+
+            await interaction.editReply({ embeds: [embed] });
+
+            // If response is too long, send remainder as text
+            if (aiResponse.length > 4096) {
+                const remaining = aiResponse.substring(4096);
+                await interaction.followUp(remaining.substring(0, 2000));
+            }
+        } else {
+            await interaction.editReply('❌ Failed to analyze search results.');
+        }
+
+    } catch (error) {
+        console.error('Error in search command:', error);
+        
+        let errorMessage = '❌ Failed to perform search.';
+        if (error.code === 'ECONNREFUSED') {
+            errorMessage = '❌ AI service is not running.';
+        } else if (error.code === 'ECONNABORTED') {
+            errorMessage = '⏱️ Request timed out.';
+        }
+        
+        await interaction.editReply(errorMessage);
     }
 }

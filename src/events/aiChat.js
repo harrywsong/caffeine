@@ -1,4 +1,5 @@
 const axios = require('axios');
+const webSearch = require('../utils/webSearch');
 
 // Configuration
 const AI_CHANNEL_ID = '1470922509762298120'; // Hardcoded AI channel
@@ -7,6 +8,7 @@ const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3.2:3b';
 const MAX_RESPONSE_TIME = 60000; // 60 seconds
 const RATE_LIMIT_SECONDS = 30; // 30 seconds between requests per user
 const CONTEXT_MESSAGES = 10; // Number of previous messages to include as context
+const ENABLE_WEB_SEARCH = process.env.ENABLE_WEB_SEARCH !== 'false'; // Enable by default
 
 // Rate limiting
 const userLastRequest = new Map();
@@ -46,11 +48,26 @@ module.exports = {
             // Fetch recent messages for context
             const contextMessages = await fetchContextMessages(message.channel, message.id);
 
-            // Send to Ollama with context
+            // Check if web search is needed
+            let searchResults = null;
+            if (ENABLE_WEB_SEARCH && webSearch.needsWebSearch(message.content)) {
+                console.log(`🔍 Web search triggered for: ${message.content}`);
+                await message.channel.sendTyping(); // Keep typing indicator active
+                
+                // Perform web search
+                const results = await webSearch.search(message.content, 5);
+                if (results.length > 0) {
+                    searchResults = webSearch.formatResults(results);
+                    console.log(`✅ Found ${results.length} search results`);
+                }
+            }
+
+            // Send to Ollama with context and search results
             const response = await generateAIResponse(
                 message.content, 
                 message.author.username,
-                contextMessages
+                contextMessages,
+                searchResults
             );
 
             // Split long responses into multiple messages (Discord limit: 2000 chars)
@@ -108,7 +125,7 @@ async function fetchContextMessages(channel, currentMessageId) {
     }
 }
 
-async function generateAIResponse(prompt, username, contextMessages = []) {
+async function generateAIResponse(prompt, username, contextMessages = [], searchResults = null) {
     try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), MAX_RESPONSE_TIME);
@@ -119,7 +136,17 @@ async function generateAIResponse(prompt, username, contextMessages = []) {
             conversationContext = '\n\nRecent conversation:\n' + contextMessages.join('\n');
         }
 
-        const fullPrompt = conversationContext + `\n\n${username}: ${prompt}`;
+        // Add search results if available
+        let searchContext = '';
+        if (searchResults) {
+            searchContext = '\n\n' + searchResults + '\n';
+        }
+
+        const fullPrompt = conversationContext + searchContext + `\n\n${username}: ${prompt}`;
+
+        const systemPrompt = searchResults 
+            ? `You are a helpful AI assistant in a Discord server with access to web search results. When answering questions, use the provided search results to give accurate, up-to-date information. Always cite your sources when using search results. Keep responses concise and friendly. You are having a conversation with users, so maintain context from previous messages when relevant. The current user's name is ${username}.`
+            : `You are a helpful AI assistant in a Discord server. Keep responses concise and friendly. You are having a conversation with users, so maintain context from previous messages when relevant. The current user's name is ${username}.`;
 
         const response = await axios.post(
             `${OLLAMA_URL}/api/generate`,
@@ -127,7 +154,7 @@ async function generateAIResponse(prompt, username, contextMessages = []) {
                 model: OLLAMA_MODEL,
                 prompt: fullPrompt,
                 stream: false,
-                system: `You are a helpful AI assistant in a Discord server. Keep responses concise and friendly. You are having a conversation with users, so maintain context from previous messages when relevant. The current user's name is ${username}.`
+                system: systemPrompt
             },
             {
                 signal: controller.signal,

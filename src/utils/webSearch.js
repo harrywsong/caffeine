@@ -1,4 +1,5 @@
 const axios = require('axios');
+const cheerio = require('cheerio');
 
 class WebSearch {
     constructor() {
@@ -7,7 +8,7 @@ class WebSearch {
     }
 
     /**
-     * Search the web using DuckDuckGo
+     * Search the web using multiple methods
      * @param {string} query - Search query
      * @param {number} maxResults - Maximum number of results to return
      * @returns {Promise<Array>} Search results
@@ -25,15 +26,25 @@ class WebSearch {
 
             console.log(`🔍 Searching web for: ${query}`);
 
-            // Try HTML search first (more reliable)
-            let results = await this.searchHTML(query, maxResults);
-
-            // If HTML search fails, try API
+            // Try multiple search methods in order
+            let results = [];
+            
+            // Method 1: DuckDuckGo HTML scraping (most reliable)
+            results = await this.searchDuckDuckGoHTML(query, maxResults);
+            
+            // Method 2: If DDG fails, try Brave Search (no API key needed)
             if (results.length === 0) {
-                results = await this.searchAPI(query, maxResults);
+                console.log('⚠️  DDG failed, trying Brave Search...');
+                results = await this.searchBrave(query, maxResults);
             }
 
-            // Cache results
+            // Method 3: If both fail, try DuckDuckGo Lite
+            if (results.length === 0) {
+                console.log('⚠️  Brave failed, trying DDG Lite...');
+                results = await this.searchDuckDuckGoLite(query, maxResults);
+            }
+
+            // Cache results if we got any
             if (results.length > 0) {
                 this.searchCache.set(cacheKey, {
                     results,
@@ -54,173 +65,159 @@ class WebSearch {
     }
 
     /**
-     * Search using DuckDuckGo API
+     * Search using DuckDuckGo HTML scraping
      */
-    async searchAPI(query, maxResults = 5) {
+    async searchDuckDuckGoHTML(query, maxResults = 5) {
         try {
-            const response = await axios.get('https://api.duckduckgo.com/', {
-                params: {
-                    q: query,
-                    format: 'json',
-                    no_html: 1,
-                    skip_disambig: 1
-                },
-                timeout: 10000
-            });
-
-            const results = [];
-
-            // Get instant answer if available
-            if (response.data.AbstractText) {
-                results.push({
-                    title: response.data.Heading || 'Instant Answer',
-                    snippet: response.data.AbstractText,
-                    url: response.data.AbstractURL || '',
-                    source: response.data.AbstractSource || 'DuckDuckGo'
-                });
-            }
-
-            // Get related topics
-            if (response.data.RelatedTopics && response.data.RelatedTopics.length > 0) {
-                for (const topic of response.data.RelatedTopics.slice(0, maxResults - results.length)) {
-                    if (topic.Text && topic.FirstURL) {
-                        results.push({
-                            title: topic.Text.split(' - ')[0] || 'Related',
-                            snippet: topic.Text,
-                            url: topic.FirstURL,
-                            source: 'DuckDuckGo'
-                        });
-                    }
-                }
-            }
-
-            return results;
-
-        } catch (error) {
-            console.error('Error in API search:', error.message);
-            return [];
-        }
-    }
-
-    /**
-     * Alternative HTML-based search (more reliable)
-     */
-    async searchHTML(query, maxResults = 5) {
-        try {
-            // Use DuckDuckGo Lite (simpler HTML, easier to parse)
-            const response = await axios.get('https://lite.duckduckgo.com/lite/', {
+            const response = await axios.get('https://html.duckduckgo.com/html/', {
                 params: { q: query },
                 headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate',
+                    'DNT': '1',
+                    'Connection': 'keep-alive',
+                    'Upgrade-Insecure-Requests': '1'
                 },
                 timeout: 10000
             });
 
+            const $ = cheerio.load(response.data);
             const results = [];
-            const html = response.data;
 
-            // Parse DuckDuckGo Lite results
-            // Format: <a rel="nofollow" href="URL">TITLE</a>
-            // Followed by: <td class="result-snippet">SNIPPET</td>
-            
-            const linkRegex = /<a rel="nofollow" href="([^"]+)">([^<]+)<\/a>/g;
-            const snippetRegex = /<td class="result-snippet">([^<]+)<\/td>/g;
-            
-            const links = [];
-            const snippets = [];
-            
-            let linkMatch;
-            while ((linkMatch = linkRegex.exec(html)) !== null) {
-                links.push({
-                    url: this.decodeHTML(linkMatch[1]),
-                    title: this.decodeHTML(linkMatch[2])
-                });
-            }
-            
-            let snippetMatch;
-            while ((snippetMatch = snippetRegex.exec(html)) !== null) {
-                snippets.push(this.decodeHTML(snippetMatch[1]));
-            }
+            // Parse search results
+            $('.result').each((i, element) => {
+                if (results.length >= maxResults) return false;
 
-            // Combine links and snippets
-            for (let i = 0; i < Math.min(links.length, snippets.length, maxResults); i++) {
-                if (links[i] && snippets[i]) {
+                const $result = $(element);
+                const $link = $result.find('.result__a');
+                const $snippet = $result.find('.result__snippet');
+                
+                const title = $link.text().trim();
+                const url = $link.attr('href');
+                const snippet = $snippet.text().trim();
+
+                if (title && url && snippet) {
+                    // Clean up the URL (DDG sometimes wraps it)
+                    let cleanUrl = url;
+                    if (url.includes('uddg=')) {
+                        const match = url.match(/uddg=([^&]+)/);
+                        if (match) {
+                            cleanUrl = decodeURIComponent(match[1]);
+                        }
+                    }
+
                     results.push({
-                        title: links[i].title,
-                        snippet: snippets[i],
-                        url: links[i].url,
+                        title: this.cleanText(title),
+                        snippet: this.cleanText(snippet),
+                        url: cleanUrl,
                         source: 'DuckDuckGo'
                     });
                 }
-            }
-
-            // If still no results, try a simpler approach
-            if (results.length === 0) {
-                console.log('⚠️  HTML parsing failed, trying fallback method...');
-                return await this.searchFallback(query, maxResults);
-            }
+            });
 
             return results;
 
         } catch (error) {
-            console.error('Error in HTML search:', error.message);
+            console.error('Error in DuckDuckGo HTML search:', error.message);
             return [];
         }
     }
 
     /**
-     * Fallback search method using a different approach
+     * Search using Brave Search (no API key needed for basic search)
      */
-    async searchFallback(query, maxResults = 5) {
+    async searchBrave(query, maxResults = 5) {
         try {
-            // Use DuckDuckGo's JSON endpoint with different parameters
-            const response = await axios.get('https://api.duckduckgo.com/', {
-                params: {
-                    q: query,
-                    format: 'json',
-                    pretty: 1,
-                    no_redirect: 1,
-                    no_html: 1,
-                    skip_disambig: 1,
-                    t: 'discord-bot'
-                },
+            const response = await axios.get('https://search.brave.com/search', {
+                params: { q: query },
                 headers: {
-                    'User-Agent': 'Mozilla/5.0 (compatible; DiscordBot/1.0)'
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5'
                 },
                 timeout: 10000
             });
 
+            const $ = cheerio.load(response.data);
             const results = [];
-            const data = response.data;
 
-            // Try to get any available information
-            if (data.Abstract) {
-                results.push({
-                    title: data.Heading || 'Information',
-                    snippet: data.Abstract,
-                    url: data.AbstractURL || '',
-                    source: data.AbstractSource || 'DuckDuckGo'
-                });
-            }
+            // Parse Brave search results
+            $('.snippet').each((i, element) => {
+                if (results.length >= maxResults) return false;
 
-            // Check Results array
-            if (data.Results && data.Results.length > 0) {
-                for (const result of data.Results.slice(0, maxResults - results.length)) {
-                    if (result.Text && result.FirstURL) {
-                        results.push({
-                            title: result.Text.split(' - ')[0] || 'Result',
-                            snippet: result.Text,
-                            url: result.FirstURL,
-                            source: 'DuckDuckGo'
-                        });
-                    }
+                const $result = $(element);
+                const $title = $result.find('.snippet-title');
+                const $url = $result.find('.snippet-url');
+                const $description = $result.find('.snippet-description');
+
+                const title = $title.text().trim();
+                const url = $url.attr('href') || $url.text().trim();
+                const snippet = $description.text().trim();
+
+                if (title && url && snippet) {
+                    results.push({
+                        title: this.cleanText(title),
+                        snippet: this.cleanText(snippet),
+                        url: url,
+                        source: 'Brave Search'
+                    });
                 }
-            }
+            });
 
             return results;
 
         } catch (error) {
-            console.error('Error in fallback search:', error.message);
+            console.error('Error in Brave search:', error.message);
+            return [];
+        }
+    }
+
+    /**
+     * Search using DuckDuckGo Lite (simpler HTML)
+     */
+    async searchDuckDuckGoLite(query, maxResults = 5) {
+        try {
+            const response = await axios.get('https://lite.duckduckgo.com/lite/', {
+                params: { q: query },
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                },
+                timeout: 10000
+            });
+
+            const $ = cheerio.load(response.data);
+            const results = [];
+
+            // Parse DDG Lite results
+            $('tr').each((i, element) => {
+                if (results.length >= maxResults) return false;
+
+                const $row = $(element);
+                const $link = $row.find('a[rel="nofollow"]').first();
+                const $snippet = $row.find('.result-snippet');
+
+                if ($link.length && $snippet.length) {
+                    const title = $link.text().trim();
+                    const url = $link.attr('href');
+                    const snippet = $snippet.text().trim();
+
+                    if (title && url && snippet) {
+                        results.push({
+                            title: this.cleanText(title),
+                            snippet: this.cleanText(snippet),
+                            url: url,
+                            source: 'DuckDuckGo'
+                        });
+                    }
+                }
+            });
+
+            return results;
+
+        } catch (error) {
+            console.error('Error in DDG Lite search:', error.message);
             return [];
         }
     }
@@ -248,16 +245,18 @@ class WebSearch {
     }
 
     /**
-     * Decode HTML entities
+     * Clean text by removing extra whitespace and HTML entities
      */
-    decodeHTML(text) {
+    cleanText(text) {
         return text
+            .replace(/\s+/g, ' ')
             .replace(/&amp;/g, '&')
             .replace(/&lt;/g, '<')
             .replace(/&gt;/g, '>')
             .replace(/&quot;/g, '"')
             .replace(/&#39;/g, "'")
-            .replace(/&nbsp;/g, ' ');
+            .replace(/&nbsp;/g, ' ')
+            .trim();
     }
 
     /**

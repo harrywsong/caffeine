@@ -5,7 +5,7 @@ const webSearch = require('../utils/webSearch');
 const AI_CHANNEL_ID = '1470922509762298120'; // Hardcoded AI channel
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3.2:3b';
-const MAX_RESPONSE_TIME = 60000; // 60 seconds
+const MAX_RESPONSE_TIME = 120000; // 120 seconds (2 minutes) for swap memory
 const RATE_LIMIT_SECONDS = 30; // 30 seconds between requests per user
 const CONTEXT_MESSAGES = 10; // Number of previous messages to include as context
 const ENABLE_WEB_SEARCH = process.env.ENABLE_WEB_SEARCH !== 'false'; // Enable by default
@@ -93,8 +93,8 @@ module.exports = {
             
             if (error.code === 'ECONNREFUSED') {
                 errorMessage = '❌ AI service is not running. Please contact an administrator.';
-            } else if (error.message.includes('timeout')) {
-                errorMessage = '⏱️ Response took too long. Please try a simpler question.';
+            } else if (error.message.includes('timeout') || error.code === 'ERR_CANCELED' || error.code === 'ECONNABORTED') {
+                errorMessage = '⏱️ Response took too long (model is loading from swap memory). Please try again in a moment - subsequent responses will be faster.';
             }
             
             await message.reply(errorMessage);
